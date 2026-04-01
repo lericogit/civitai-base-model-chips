@@ -7,7 +7,7 @@
 // @license      MIT
 // @homepageURL  https://github.com/lericogit/civitai-base-model-chips
 // @supportURL   https://github.com/lericogit/civitai-base-model-chips/issues
-// @match        https://civitai.com/models*
+// @match        https://civitai.com/*
 // @run-at       document-idle
 // @grant        none
 // ==/UserScript==
@@ -25,6 +25,7 @@
   const COPY_BUTTON_LABEL_ATTR = 'data-tm-base-model-copy-button-label';
   const COPY_BUTTON_ICON_ATTR = 'data-tm-base-model-copy-button-icon';
   const SIGNATURE_ATTR = 'data-tm-base-model-signature';
+  const MODELS_PATH_PATTERN = /^\/models(?:\/|$)/i;
   const FILTER_MODES = {
     OFF: 'off',
     BLACKLIST: 'blacklist',
@@ -452,6 +453,10 @@
     });
   }
 
+  function isModelsPage() {
+    return MODELS_PATH_PATTERN.test(window.location.pathname);
+  }
+
   function getBaseModelSections() {
     return [...document.querySelectorAll('.mantine-Divider-label')]
       .filter((label) => normalizeText(label.textContent).toLowerCase() === 'base model')
@@ -834,6 +839,10 @@
   }
 
   function syncAllSections() {
+    if (!isModelsPage()) {
+      return;
+    }
+
     ensureStyles();
 
     for (const section of getBaseModelSections()) {
@@ -841,8 +850,29 @@
     }
   }
 
+  function installHistoryHooks() {
+    const methods = ['pushState', 'replaceState'];
+
+    for (const method of methods) {
+      const original = history[method];
+      if (typeof original !== 'function' || original.__tmBaseModelWrapped) {
+        continue;
+      }
+
+      const wrapped = function (...args) {
+        const result = original.apply(this, args);
+        scheduleSync();
+        return result;
+      };
+
+      wrapped.__tmBaseModelWrapped = true;
+      history[method] = wrapped;
+    }
+  }
+
   function start() {
     ensureStyles();
+    installHistoryHooks();
     scheduleSync();
 
     const observer = new MutationObserver(() => {

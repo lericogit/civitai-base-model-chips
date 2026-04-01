@@ -92,7 +92,7 @@ Result: only those models are shown in the custom chips.
 ## Files
 
 - [`civitai-base-model-chips.user.js`](./civitai-base-model-chips.user.js): the userscript
-- [`compare.png`](./compare.png): before/after preview image placeholder
+- [`compare.png`](./compare.png): before/after preview image
 - [`LICENSE`](./LICENSE): MIT license
 
 ## License
