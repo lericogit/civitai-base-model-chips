@@ -1,0 +1,9 @@
+# OS clutter
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local scratch / exported helper files
+model-list.js
+
+/assets/
