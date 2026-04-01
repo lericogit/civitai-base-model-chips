@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Civitai Base Model Chips
 // @namespace    https://civitai.com/
-// @version      1.3.0
+// @version      1.4.0
 // @author       lericogit
 // @description  Replaces the Base model dropdown with chip-style filters on the Civitai models page.
 // @license      MIT
@@ -22,6 +22,8 @@
   const GROUP_ATTR = 'data-tm-base-model-chip-group';
   const DIVIDER_ACTIONS_ATTR = 'data-tm-base-model-divider-actions';
   const COPY_BUTTON_ATTR = 'data-tm-base-model-copy-button';
+  const COPY_BUTTON_LABEL_ATTR = 'data-tm-base-model-copy-button-label';
+  const COPY_BUTTON_ICON_ATTR = 'data-tm-base-model-copy-button-icon';
   const SIGNATURE_ATTR = 'data-tm-base-model-signature';
   const FILTER_MODES = {
     OFF: 'off',
@@ -187,6 +189,9 @@
         border-radius: 999px;
         color: var(--mantine-color-dimmed, inherit);
         cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: calc(0.25rem * var(--mantine-scale, 1));
         font: inherit;
         font-size: var(--mantine-font-size-xs, 0.75rem);
         line-height: 1.2;
@@ -199,8 +204,29 @@
         transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
       }
 
+      [${COPY_BUTTON_ICON_ATTR}="true"] {
+        display: none;
+        flex: 0 0 auto;
+        width: 0.85rem;
+        height: 0.85rem;
+      }
+
+      [${COPY_BUTTON_ATTR}="true"][data-warning="true"] {
+        background: rgba(255, 212, 59, 0.14);
+        border-color: #f59f00;
+        color: #8f5b00;
+      }
+
+      [${COPY_BUTTON_ATTR}="true"][data-warning="true"] [${COPY_BUTTON_ICON_ATTR}="true"] {
+        display: inline-flex;
+      }
+
       [${COPY_BUTTON_ATTR}="true"]:hover {
         background: var(--mantine-color-default-hover, rgba(0, 0, 0, 0.05));
+      }
+
+      [${COPY_BUTTON_ATTR}="true"][data-warning="true"]:hover {
+        background: rgba(255, 212, 59, 0.22);
       }
 
       [${COPY_BUTTON_ATTR}="true"][data-state="copied"] {
@@ -258,6 +284,18 @@
     }
   }
 
+  function setCopyButtonLabel(button, label) {
+    const labelNode = button?.querySelector(`[${COPY_BUTTON_LABEL_ATTR}="true"]`);
+    if (labelNode) {
+      labelNode.textContent = label;
+      return;
+    }
+
+    if (button) {
+      button.textContent = label;
+    }
+  }
+
   function setCopyButtonState(button, state, label) {
     if (!button) {
       return;
@@ -268,7 +306,7 @@
     }
 
     button.dataset.state = state;
-    button.textContent = label;
+    setCopyButtonLabel(button, label);
 
     if (state === 'idle') {
       return;
@@ -276,8 +314,61 @@
 
     button._tmCopyResetTimer = window.setTimeout(() => {
       button.dataset.state = 'idle';
-      button.textContent = 'Copy model list';
+      setCopyButtonLabel(button, 'Copy model list');
     }, 1800);
+  }
+
+  function getModelsMissingFromHardcodedList(options) {
+    const hardcodedModels = new Set(
+      ALL_BASE_MODELS
+        .map((value) => normalizeKey(value))
+        .filter(Boolean)
+    );
+    const missingModels = [];
+
+    for (const option of options) {
+      const key = normalizeKey(option.value);
+      if (!key || hardcodedModels.has(key)) {
+        continue;
+      }
+
+      hardcodedModels.add(key);
+      missingModels.push(option.value);
+    }
+
+    return missingModels;
+  }
+
+  function buildMissingModelsMessage(missingModels) {
+    const count = missingModels.length;
+    if (!count) {
+      return '';
+    }
+
+    const modelLabel = count === 1 ? 'model' : 'models';
+    const verb = count === 1 ? 'has' : 'have';
+    return `New base ${modelLabel} ${verb} been added to Civitai and ${count === 1 ? 'is' : 'are'} missing from ALL_BASE_MODELS. Click "Copy model list" and update the hardcoded list manually. New ${modelLabel}: ${missingModels.join(', ')}.`;
+  }
+
+  function updateCopyButtonWarning(button, options) {
+    if (!button) {
+      return;
+    }
+
+    const missingModels = getModelsMissingFromHardcodedList(options);
+    const hasWarning = missingModels.length > 0;
+
+    if (!hasWarning) {
+      button.dataset.warning = 'false';
+      button.title = 'Copy the live Base model dropdown values as const ALL_BASE_MODELS = [...]';
+      button.setAttribute('aria-label', 'Copy model list');
+      return;
+    }
+
+    const message = buildMissingModelsMessage(missingModels);
+    button.dataset.warning = 'true';
+    button.title = message;
+    button.setAttribute('aria-label', `Copy model list. Warning: ${message}`);
   }
 
   function formatAllBaseModelsConstant(options) {
@@ -318,8 +409,26 @@
     button.type = 'button';
     button.setAttribute(COPY_BUTTON_ATTR, 'true');
     button.dataset.state = 'idle';
-    button.textContent = 'Copy model list';
+    button.dataset.warning = 'false';
     button.title = 'Copy the live Base model dropdown values as const ALL_BASE_MODELS = [...]';
+    button.setAttribute('aria-label', 'Copy model list');
+
+    const icon = document.createElement('span');
+    icon.setAttribute(COPY_BUTTON_ICON_ATTR, 'true');
+    icon.setAttribute('aria-hidden', 'true');
+    icon.innerHTML = `
+      <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" width="14" height="14">
+        <path d="M10 2.5L18 17H2L10 2.5Z" fill="currentColor" fill-opacity="0.16" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path>
+        <path d="M10 7V11.2" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"></path>
+        <circle cx="10" cy="14.2" r="1" fill="currentColor"></circle>
+      </svg>
+    `;
+
+    const label = document.createElement('span');
+    label.setAttribute(COPY_BUTTON_LABEL_ATTR, 'true');
+    label.textContent = 'Copy model list';
+
+    button.append(icon, label);
     button.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -675,7 +784,8 @@
 
     const selectedValues = new Set(getSelectedValues(section));
     const visibleOptions = getVisibleChipOptions(options, selectedValues);
-    ensureCopyButton(section);
+    const copyButton = ensureCopyButton(section);
+    updateCopyButtonWarning(copyButton, options);
     const group = getOrCreateGroup(section);
     const wrapper = group.parentElement;
     const signature = signatureFor(visibleOptions, selectedValues);

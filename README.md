@@ -10,6 +10,7 @@ Tampermonkey userscript that restores the `Base model` filter on `https://civita
 - Rebuilds the same filter as chip-style toggles that match the surrounding UI.
 - Keeps the real hidden dropdown intact, so filtering still uses the site's own logic.
 - Adds a small `Copy model list` button in the `Base model` header to export the current live dropdown values as a ready-to-paste `const ALL_BASE_MODELS = [...]`.
+- Warns you when Civitai adds new base models that are missing from your hardcoded `ALL_BASE_MODELS` list.
 
 ## Install
 
@@ -47,6 +48,8 @@ const ALL_BASE_MODELS = [
 ```
 
 When Civitai adds new base models, use the `Copy model list` button in the UI. It copies the current live dropdown values in exactly this format. Replace the constant in the script with the copied block.
+
+If the button turns yellow and shows a warning icon, the live Civitai dropdown contains one or more base models that are not in `ALL_BASE_MODELS` yet. Hover the button to see the native tooltip with the missing model names, then click it and replace the hardcoded list manually.
 
 ### Blacklist Mode Example
 
