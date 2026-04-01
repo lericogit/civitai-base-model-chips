@@ -9,8 +9,10 @@ Tampermonkey userscript that restores the `Base model` filter on `https://civita
 - Hides the original `Base model` MultiSelect from the page.
 - Rebuilds the same filter as chip-style toggles that match the surrounding UI.
 - Keeps the real hidden dropdown intact, so filtering still uses the site's own logic.
-- Adds a small `Copy model list` button in the `Base model` header to export the current live dropdown values as a ready-to-paste `const ALL_BASE_MODELS = [...]`.
-- Warns you when Civitai adds new base models that are missing from your hardcoded `ALL_BASE_MODELS` list.
+- Uses the live Civitai Base model list whenever it can read it.
+- Falls back to `ALL_BASE_MODELS` only if the live list is temporarily unavailable.
+- Adds a small `Copy model list` button in the `Base model` header to export the current Base model list as a ready-to-paste `const ALL_BASE_MODELS = [...]`.
+- Warns you if the live list could not be read or if your hardcoded `ALL_BASE_MODELS` list is out of sync with the live Civitai list.
 
 ## Install
 
@@ -37,7 +39,7 @@ Valid modes:
 
 ### `ALL_BASE_MODELS`
 
-This is the hardcoded reference list used for matching your manual config values:
+This is a hardcoded fallback/reference list:
 
 ```js
 const ALL_BASE_MODELS = [
@@ -47,9 +49,12 @@ const ALL_BASE_MODELS = [
 ];
 ```
 
-When Civitai adds new base models, use the `Copy model list` button in the UI. It copies the current live dropdown values in exactly this format. Replace the constant in the script with the copied block.
+The script always tries to use the live Civitai Base model list first. `ALL_BASE_MODELS` is only used when the live list cannot be read, and as a reference for sync warnings and your manual config values.
 
-If the button turns yellow and shows a warning icon, the live Civitai dropdown contains one or more base models that are not in `ALL_BASE_MODELS` yet. Hover the button to see the native tooltip with the missing model names, then click it and replace the hardcoded list manually.
+The `Copy model list` button copies the current Base model list in exactly this format. If the button turns yellow and shows a warning icon, one of two things is happening:
+
+- the live Civitai list could not be read, so the chips are temporarily using `ALL_BASE_MODELS` as fallback
+- `ALL_BASE_MODELS` no longer matches the live Civitai list, so you may want to update it to keep your fallback/reference list current
 
 ### Blacklist Mode Example
 
@@ -83,6 +88,7 @@ Result: only those models are shown in the custom chips.
 ### Important Notes
 
 - This feature is visual-only. The real dropdown still contains every site value.
+- The script prefers the live Civitai Base model list whenever it can read it.
 - The site backend is never told about the custom chip whitelist or blacklist.
 - If the whitelist is empty, the script safely falls back to `off`.
 - If the blacklist would remove everything, the script safely falls back to `off`.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Civitai Base Model Chips
 // @namespace    https://civitai.com/
-// @version      1.5.0
+// @version      1.6.0
 // @author       lericogit
 // @description  Replaces the Base model dropdown with chip-style filters on the Civitai models page.
 // @license      MIT
@@ -47,6 +47,8 @@
    * - These settings are visual-only.
    * - They only affect the custom chips added by this userscript.
    * - The real hidden dropdown stays intact and unchanged.
+   * - ALL_BASE_MODELS is fallback-only for chip loading.
+   * - The live Civitai list is always preferred when available.
    * ========================================================================
    */
 
@@ -319,55 +321,94 @@
     }, 1800);
   }
 
-  function getModelsMissingFromHardcodedList(options) {
-    const hardcodedModels = new Set(
-      ALL_BASE_MODELS
-        .map((value) => normalizeKey(value))
-        .filter(Boolean)
-    );
-    const missingModels = [];
+  function compareHardcodedAndLiveModels(liveOptions) {
+    const liveModels = new Map();
+    const hardcodedModels = new Map();
 
-    for (const option of options) {
+    for (const option of liveOptions) {
       const key = normalizeKey(option.value);
-      if (!key || hardcodedModels.has(key)) {
-        continue;
+      if (key && !liveModels.has(key)) {
+        liveModels.set(key, option.value);
       }
-
-      hardcodedModels.add(key);
-      missingModels.push(option.value);
     }
 
-    return missingModels;
+    for (const value of ALL_BASE_MODELS) {
+      const normalized = normalizeText(value);
+      const key = normalizeKey(normalized);
+      if (key && !hardcodedModels.has(key)) {
+        hardcodedModels.set(key, normalized);
+      }
+    }
+
+    const liveOnly = [];
+    const hardcodedOnly = [];
+
+    for (const [key, value] of liveModels.entries()) {
+      if (!hardcodedModels.has(key)) {
+        liveOnly.push(value);
+      }
+    }
+
+    for (const [key, value] of hardcodedModels.entries()) {
+      if (!liveModels.has(key)) {
+        hardcodedOnly.push(value);
+      }
+    }
+
+    return { liveOnly, hardcodedOnly };
   }
 
-  function buildMissingModelsMessage(missingModels) {
-    const count = missingModels.length;
-    if (!count) {
+  function buildLiveListUnavailableMessage() {
+    return 'Could not read Civitai\'s live Base model list right now. The script is temporarily using ALL_BASE_MODELS as a fallback for the chips. Refresh the page or reopen the filter if something looks off.';
+  }
+
+  function buildHardcodedListDiffMessage(diff) {
+    const parts = [
+      'ALL_BASE_MODELS is out of sync with Civitai\'s live Base model list.',
+      'The chips are already using the live list, so filtering still works.',
+      'You should probably refresh the hardcoded list so your fallback and manual config reference stay current.',
+    ];
+
+    if (diff.liveOnly.length) {
+      parts.push(`New on Civitai: ${diff.liveOnly.join(', ')}.`);
+    }
+
+    if (diff.hardcodedOnly.length) {
+      parts.push(`Only in ALL_BASE_MODELS: ${diff.hardcodedOnly.join(', ')}.`);
+    }
+
+    return parts.join(' ');
+  }
+
+  function getCopyButtonWarningMessage(liveOptions) {
+    if (!liveOptions.length) {
+      return buildLiveListUnavailableMessage();
+    }
+
+    const diff = compareHardcodedAndLiveModels(liveOptions);
+    if (!diff.liveOnly.length && !diff.hardcodedOnly.length) {
       return '';
     }
 
-    const modelLabel = count === 1 ? 'model' : 'models';
-    const verb = count === 1 ? 'has' : 'have';
-    return `New base ${modelLabel} ${verb} been added to Civitai and ${count === 1 ? 'is' : 'are'} missing from ALL_BASE_MODELS. Click "Copy model list" and update the hardcoded list manually. New ${modelLabel}: ${missingModels.join(', ')}.`;
+    return buildHardcodedListDiffMessage(diff);
   }
 
-  function updateCopyButtonWarning(button, options) {
+  function updateCopyButtonWarning(button, liveOptions) {
     if (!button) {
       return;
     }
 
-    const missingModels = getModelsMissingFromHardcodedList(options);
-    const hasWarning = missingModels.length > 0;
+    const message = getCopyButtonWarningMessage(liveOptions);
+    const hasWarning = Boolean(message);
 
     if (!hasWarning) {
       button.dataset.warning = 'false';
-      button.title = 'Copy the live Base model dropdown values as const ALL_BASE_MODELS = [...]';
+      button.title = 'Copy the current Base model list as const ALL_BASE_MODELS = [...]';
       button.setAttribute('aria-label', 'Copy model list');
       syncCopyButtonLayout(button);
       return;
     }
 
-    const message = buildMissingModelsMessage(missingModels);
     button.dataset.warning = 'true';
     button.title = message;
     button.setAttribute('aria-label', `Copy model list. Warning: ${message}`);
@@ -414,7 +455,7 @@
     button.setAttribute(COPY_BUTTON_ATTR, 'true');
     button.dataset.state = 'idle';
     button.dataset.warning = 'false';
-    button.title = 'Copy the live Base model dropdown values as const ALL_BASE_MODELS = [...]';
+    button.title = 'Copy the current Base model list as const ALL_BASE_MODELS = [...]';
     button.setAttribute('aria-label', 'Copy model list');
 
     const icon = document.createElement('span');
@@ -505,14 +546,18 @@
         .filter(Boolean)
     );
     const dropdowns = [...document.querySelectorAll('.mantine-MultiSelect-dropdown')];
+    const dropdownCandidates = [];
     let bestNodes = [];
     let bestScore = 0;
+    let largestNodes = [];
 
     for (const dropdown of dropdowns) {
       const nodes = [...dropdown.querySelectorAll('.mantine-MultiSelect-option[data-combobox-option]')];
       if (!nodes.length) {
         continue;
       }
+
+      dropdownCandidates.push(nodes);
 
       const score = nodes.reduce((total, node) => {
         const value = normalizeKey(node.getAttribute('value') || node.textContent);
@@ -523,9 +568,21 @@
         bestNodes = nodes;
         bestScore = score;
       }
+
+      if (nodes.length > largestNodes.length) {
+        largestNodes = nodes;
+      }
     }
 
-    return bestScore > 0 ? bestNodes : [];
+    if (bestScore > 0) {
+      return bestNodes;
+    }
+
+    if (dropdownCandidates.length === 1) {
+      return dropdownCandidates[0];
+    }
+
+    return largestNodes;
   }
 
   function getLiveOptions(section) {
