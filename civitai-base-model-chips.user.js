@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Civitai Base Model Chips
 // @namespace    https://civitai.com/
-// @version      1.4.0
+// @version      1.5.0
 // @author       lericogit
 // @description  Replaces the Base model dropdown with chip-style filters on the Civitai models page.
 // @license      MIT
@@ -132,6 +132,7 @@
 
   let chipIdCounter = 0;
   let syncQueued = false;
+  let modelsPageObserver = null;
 
   function normalizeText(text) {
     return (text || '').replace(/\s+/g, ' ').trim();
@@ -155,32 +156,13 @@
     const style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = `
-      [${HIDDEN_ATTR}="true"] > .mantine-InputWrapper-root {
-        position: absolute !important;
-        width: 1px !important;
-        height: 1px !important;
-        margin: -1px !important;
-        padding: 0 !important;
-        overflow: hidden !important;
-        clip: rect(0 0 0 0) !important;
-        clip-path: inset(50%) !important;
-        white-space: nowrap !important;
-        border: 0 !important;
-        opacity: 0 !important;
-        pointer-events: none !important;
-      }
-
-      [${HIDDEN_ATTR}="true"] > .mantine-MultiSelect-dropdown {
-        display: none !important;
-      }
-
       [${WRAPPER_ATTR}="true"] {
         width: 100%;
       }
 
       [${DIVIDER_ACTIONS_ATTR}="true"] {
         position: relative;
-        padding-right: calc(8rem * var(--mantine-scale, 1));
+        padding-right: var(--tm-base-model-copy-button-space, calc(8rem * var(--mantine-scale, 1)));
       }
 
       [${COPY_BUTTON_ATTR}="true"] {
@@ -297,6 +279,22 @@
     }
   }
 
+  function syncCopyButtonLayout(button) {
+    const divider = button?.closest('.mantine-Divider-root');
+    if (!button || !divider) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      if (!button.isConnected || !divider.isConnected) {
+        return;
+      }
+
+      const spacing = Math.ceil(button.getBoundingClientRect().width + 12);
+      divider.style.setProperty('--tm-base-model-copy-button-space', `${spacing}px`);
+    });
+  }
+
   function setCopyButtonState(button, state, label) {
     if (!button) {
       return;
@@ -308,6 +306,7 @@
 
     button.dataset.state = state;
     setCopyButtonLabel(button, label);
+    syncCopyButtonLayout(button);
 
     if (state === 'idle') {
       return;
@@ -316,6 +315,7 @@
     button._tmCopyResetTimer = window.setTimeout(() => {
       button.dataset.state = 'idle';
       setCopyButtonLabel(button, 'Copy model list');
+      syncCopyButtonLayout(button);
     }, 1800);
   }
 
@@ -363,6 +363,7 @@
       button.dataset.warning = 'false';
       button.title = 'Copy the live Base model dropdown values as const ALL_BASE_MODELS = [...]';
       button.setAttribute('aria-label', 'Copy model list');
+      syncCopyButtonLayout(button);
       return;
     }
 
@@ -370,6 +371,7 @@
     button.dataset.warning = 'true';
     button.title = message;
     button.setAttribute('aria-label', `Copy model list. Warning: ${message}`);
+    syncCopyButtonLayout(button);
   }
 
   function formatAllBaseModelsConstant(options) {
@@ -379,7 +381,8 @@
 
   async function handleCopyModelList(section, button) {
     try {
-      const options = getOptions(section);
+      const liveOptions = getLiveOptions(section);
+      const options = liveOptions.length ? liveOptions : getOptions(section);
       if (!options.length) {
         setCopyButtonState(button, 'error', 'No models');
         return;
@@ -468,15 +471,11 @@
     return section.querySelector('.mantine-MultiSelect-root');
   }
 
-  function getOptionNodes(section) {
-    return [...section.querySelectorAll('.mantine-MultiSelect-option[data-combobox-option]')];
-  }
-
-  function getOptions(section) {
+  function buildOptionsFromNodes(nodes) {
     const seen = new Set();
     const options = [];
 
-    for (const node of getOptionNodes(section)) {
+    for (const node of nodes) {
       const value = normalizeText(node.getAttribute('value') || node.textContent);
       if (!value || seen.has(value)) {
         continue;
@@ -492,6 +491,67 @@
     }
 
     return options;
+  }
+
+  function getLiveOptionNodes(section) {
+    const scopedNodes = [...section.querySelectorAll('.mantine-MultiSelect-option[data-combobox-option]')];
+    if (scopedNodes.length) {
+      return scopedNodes;
+    }
+
+    const knownKeys = new Set(
+      [...ALL_BASE_MODELS, ...getSelectedValuesFromHiddenInput(section)]
+        .map((value) => normalizeKey(value))
+        .filter(Boolean)
+    );
+    const dropdowns = [...document.querySelectorAll('.mantine-MultiSelect-dropdown')];
+    let bestNodes = [];
+    let bestScore = 0;
+
+    for (const dropdown of dropdowns) {
+      const nodes = [...dropdown.querySelectorAll('.mantine-MultiSelect-option[data-combobox-option]')];
+      if (!nodes.length) {
+        continue;
+      }
+
+      const score = nodes.reduce((total, node) => {
+        const value = normalizeKey(node.getAttribute('value') || node.textContent);
+        return total + (knownKeys.has(value) ? 1 : 0);
+      }, 0);
+
+      if (score > bestScore || (score === bestScore && score > 0 && nodes.length > bestNodes.length)) {
+        bestNodes = nodes;
+        bestScore = score;
+      }
+    }
+
+    return bestScore > 0 ? bestNodes : [];
+  }
+
+  function getLiveOptions(section) {
+    return buildOptionsFromNodes(getLiveOptionNodes(section));
+  }
+
+  function getFallbackOptions(section) {
+    const seen = new Set();
+    const values = [];
+
+    for (const value of [...ALL_BASE_MODELS, ...getSelectedValues(section)]) {
+      const normalized = normalizeText(value);
+      if (!normalized || seen.has(normalized)) {
+        continue;
+      }
+
+      seen.add(normalized);
+      values.push({ value: normalized, label: normalized });
+    }
+
+    return values;
+  }
+
+  function getOptions(section) {
+    const liveOptions = getLiveOptions(section);
+    return liveOptions.length ? liveOptions : getFallbackOptions(section);
   }
 
   function buildKnownModelLookup(options) {
@@ -583,7 +643,7 @@
     return visibleOptions.length ? visibleOptions : options;
   }
 
-  function getSelectedValues(section) {
+  function getSelectedValuesFromHiddenInput(section) {
     const hiddenInput = section.querySelector('.mantine-MultiSelect-root input[type="hidden"]');
     if (hiddenInput) {
       return hiddenInput.value
@@ -592,7 +652,16 @@
         .filter(Boolean);
     }
 
-    return getOptionNodes(section)
+    return [];
+  }
+
+  function getSelectedValues(section) {
+    const hiddenValues = getSelectedValuesFromHiddenInput(section);
+    if (hiddenValues.length) {
+      return hiddenValues;
+    }
+
+    return getLiveOptionNodes(section)
       .filter((node) => node.getAttribute('aria-selected') === 'true')
       .map((node) => normalizeText(node.getAttribute('value') || node.textContent))
       .filter(Boolean);
@@ -639,7 +708,7 @@
   }
 
   function findOptionNode(section, value) {
-    return getOptionNodes(section)
+    return getLiveOptionNodes(section)
       .find((node) => normalizeText(node.getAttribute('value') || node.textContent) === value) || null;
   }
 
@@ -779,7 +848,8 @@
       return;
     }
 
-    const options = getOptions(section);
+    const liveOptions = getLiveOptions(section);
+    const options = liveOptions.length ? liveOptions : getFallbackOptions(section);
     if (!options.length) {
       return;
     }
@@ -790,7 +860,7 @@
     const selectedValues = new Set(getSelectedValues(section));
     const visibleOptions = getVisibleChipOptions(options, selectedValues);
     const copyButton = ensureCopyButton(section);
-    updateCopyButtonWarning(copyButton, options);
+    updateCopyButtonWarning(copyButton, liveOptions);
     const group = getOrCreateGroup(section);
     const wrapper = group.parentElement;
     const signature = signatureFor(visibleOptions, selectedValues);
@@ -850,6 +920,41 @@
     }
   }
 
+  function startModelsPageObserver() {
+    if (modelsPageObserver || !document.body) {
+      return;
+    }
+
+    modelsPageObserver = new MutationObserver(() => {
+      scheduleSync();
+    });
+
+    modelsPageObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+  }
+
+  function stopModelsPageObserver() {
+    if (!modelsPageObserver) {
+      return;
+    }
+
+    modelsPageObserver.disconnect();
+    modelsPageObserver = null;
+  }
+
+  function refreshModelsPageLifecycle() {
+    if (isModelsPage()) {
+      ensureStyles();
+      startModelsPageObserver();
+      scheduleSync();
+      return;
+    }
+
+    stopModelsPageObserver();
+  }
+
   function installHistoryHooks() {
     const methods = ['pushState', 'replaceState'];
 
@@ -861,7 +966,7 @@
 
       const wrapped = function (...args) {
         const result = original.apply(this, args);
-        scheduleSync();
+        refreshModelsPageLifecycle();
         return result;
       };
 
@@ -871,22 +976,10 @@
   }
 
   function start() {
-    ensureStyles();
     installHistoryHooks();
-    scheduleSync();
-
-    const observer = new MutationObserver(() => {
-      scheduleSync();
-    });
-
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-    });
-
-    window.setInterval(scheduleSync, 1000);
-    window.addEventListener('popstate', scheduleSync);
-    window.addEventListener('hashchange', scheduleSync);
+    refreshModelsPageLifecycle();
+    window.addEventListener('popstate', refreshModelsPageLifecycle);
+    window.addEventListener('hashchange', refreshModelsPageLifecycle);
   }
 
   if (document.readyState === 'loading') {
