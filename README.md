@@ -1,10 +1,23 @@
-# Civitai Base Model Chips
+# Civitai Base Model Filter Scripts
 
-![Before and after preview](./compare.png)
+Tampermonkey userscripts for replacing the `Base model` filter UI on `https://civitai.com/models`.
 
-Tampermonkey userscript that restores the `Base model` filter on `https://civitai.com/models` to a chip-style picker instead of the newer dropdown-only UI.
+This repo currently includes two separate scripts:
 
-## What It Does
+- `civitai-base-model-chips.user.js`: restores the old chip-style model picker
+- `civitai-base-model-presets.user.js`: replaces the model picker with preset chips backed by the live Civitai Base model list
+
+## Chip Script Preview
+
+![Chip script preview](./compare.png)
+
+## Preset Script Preview
+
+![Preset script preview](./presets.png)
+
+## Chip Script
+
+### What It Does
 
 - Hides the original `Base model` MultiSelect from the page.
 - Rebuilds the same filter as chip-style toggles that match the surrounding UI.
@@ -17,11 +30,15 @@ Tampermonkey userscript that restores the `Base model` filter on `https://civita
 ## Install
 
 1. Install the Tampermonkey browser extension.
-2. Open [`civitai-base-model-chips.user.js`](./civitai-base-model-chips.user.js).
+2. Open one of these files:
+   - [`civitai-base-model-chips.user.js`](./civitai-base-model-chips.user.js)
+   - [`civitai-base-model-presets.user.js`](./civitai-base-model-presets.user.js)
 3. Create a new Tampermonkey script and paste the file contents.
 4. Save it and visit `https://civitai.com/models`.
 
-## Configuration
+Only run one of the two scripts at a time.
+
+## Chip Script Configuration
 
 All configuration is hardcoded near the top of [`civitai-base-model-chips.user.js`](./civitai-base-model-chips.user.js).
 
@@ -95,10 +112,23 @@ Result: only those models are shown in the custom chips.
 - If a hidden model is already selected, the chip stays visible so you can still deselect it.
 - Unknown names, duplicates, and spacing or case mismatches are ignored safely.
 
+## Preset Script
+
+[`civitai-base-model-presets.user.js`](./civitai-base-model-presets.user.js) is a separate userscript with a different workflow.
+
+- Replaces the Base model picker with preset chips and a built-in `All models` chip.
+- Stores presets in browser `localStorage`, so they persist across reloads.
+- Uses the live Civitai Base model list for preset creation, editing, and application.
+- Lets you create, edit, rename, and delete presets inline in the `Base model` section.
+- Temporarily disables preset actions and shows a warning if the live Base model list cannot be read.
+- Ignores removed models when applying an older preset and warns about them in edit mode.
+
 ## Files
 
 - [`civitai-base-model-chips.user.js`](./civitai-base-model-chips.user.js): the userscript
-- [`compare.png`](./compare.png): before/after preview image
+- [`civitai-base-model-presets.user.js`](./civitai-base-model-presets.user.js): the preset-based userscript
+- [`compare.png`](./compare.png): chip script preview image
+- [`presets.png`](./presets.png): preset script preview image
 - [`LICENSE`](./LICENSE): MIT license
 
 ## License
