@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Civitai Base Model Presets
-// @namespace    https://civitai.com/
+// @namespace    https://github.com/lericogit/
 // @version      1.0.0
 // @author       lericogit
 // @description  Replaces the Base model dropdown with preset chips on the Civitai models page.
@@ -8,6 +8,8 @@
 // @homepageURL  https://github.com/lericogit/civitai-base-model-chips
 // @supportURL   https://github.com/lericogit/civitai-base-model-chips/issues
 // @match        https://civitai.com/*
+// @match        https://civitai.red/*
+// @match        https://civitai.green/*
 // @run-at       document-start
 // @grant        none
 // ==/UserScript==
